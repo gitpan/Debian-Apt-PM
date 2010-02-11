@@ -1,0 +1,40 @@
+This file contains message digests of all files listed in MANIFEST,
+signed via the Module::Signature module, version 0.61.
+
+To verify the content in this distribution, first make sure you have
+Module::Signature installed, then type:
+
+    % cpansign -v
+
+It will check each file's integrity, as well as the signature's
+validity.  If "==> Signature verified OK! <==" is not displayed,
+the distribution may already have been compromised, and you should
+not run its Makefile.PL or Build.PL.
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+SHA1 b27dfd3744091c8e62095a5f8b67c0e8593e96fb Build.PL
+SHA1 81ca7b916d4a58842e78166a43af7aad99d2d617 Changes
+SHA1 35008c117a031b38f998209582005628d86bbfef MANIFEST
+SHA1 049de17e158607a9e683e312e2e4dcc979f51712 META.yml
+SHA1 8942042a81fc5cbc013d725a2e9380f2fcb42b6d README
+SHA1 d7679ae5a758d02144e5361416a241ed2c2e06a6 lib/Debian/Apt/PM.pm
+SHA1 da7cb6c8b476e6e8842fd90e3399af22cc916065 lib/Debian/Apt/PM/SPc.pm
+SHA1 3c3aafa13fd44cd03a0f0fc9b85f93eee272f898 script/apt-pm
+SHA1 3120762a6da80d81e147045ae1fc22d4f11a4ef3 script/dpkg-scanpmpackages
+SHA1 e88b49f7c20d114333ccde6f98e8c98b338b3470 t/01_Debian-Apt-PM.t
+SHA1 81c1f43dc470c7c64e6376a0593a15ac9be44927 t/PerlPackages.bz2
+SHA1 9b627bf929e47e43e7411dd5280bf0d1092a43ee t/PerlPackages2.bz2
+SHA1 41533fbd463e42d2ecf1e119eca910c16809d13e t/distribution.t
+SHA1 10c564e5ffe84748070827b350edbf3d6b832b20 t/fixme.t
+SHA1 0b1c5a2d59be6bfa7d60c64cd964fea6a0331705 t/pod-coverage.t
+SHA1 4af641cdc7b41675aa47a429e93676a13e2864a2 t/pod-spell.t
+SHA1 640935336dc1123c0069bcf5432bcaedc2cf22d3 t/pod.t
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.10 (GNU/Linux)
+
+iEYEARECAAYFAkt0aSYACgkQC0OgUPgL2SdDswCdHEa/sURzaTGOg3i/fpKs9W7e
+mIQAnjDtv3A8Ysg23j/4w4n+oaXRUC/9
+=20On
+-----END PGP SIGNATURE-----
