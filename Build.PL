@@ -2,6 +2,8 @@ use strict;
 use warnings;
 use Module::Build::SysPath;
 
+use 5.010;
+
 my $builder = Module::Build::SysPath->new(
     module_name       => 'Debian::Apt::PM',
     license           => 'perl',
@@ -9,14 +11,13 @@ my $builder = Module::Build::SysPath->new(
     dist_version_from => 'lib/Debian/Apt/PM.pm',
     
     configure_requires => {
-        'Module::Build::SysPath' => 0.09,
+        'Module::Build::SysPath' => 0.13,
     },
     build_requires => {
-        'Module::Build::SysPath' => 0.09,
+        'Module::Build::SysPath' => 0.13,
         'Test::More'             => 0,
         'Test::Differences'      => 0,
         'Test::Exception'        => 0,
-        'Test::Compile'          => 0,
     },
     requires => {
         'Moose'                   => 0,
@@ -36,7 +37,13 @@ my $builder = Module::Build::SysPath->new(
         'Module::Build::ModuleInfo' => 0,
         'File::Temp'              => 0,
         'File::Path'              => 0,
+        'CPAN::Version'           => 0,
+        'Storable'                => 0,
     },
+    script_files => [
+        'script/apt-pm',
+        'script/dpkg-scanpmpackages',
+    ],
     add_to_cleanup => [ 'Debian-Apt-PM-*' ],
     create_readme  => 1,
     sign           => 1,

@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 #use Test::More 'no_plan';
-use Test::More tests => 8;
+use Test::More tests => 12;
 use Test::Differences;
 use Test::Exception;
 
@@ -55,11 +55,13 @@ sub main {
 		
 		my %deb1 = (
 			'version' => '5.230-1',
-			'package' => 'libanyevent-perl'
+			'package' => 'libanyevent-perl',
+			'arch'    => 'all',
 		);
 		my %deb2 = (
 			'version' => '0.21-1',
-			'package' => 'libclass-c3-perl'
+			'package' => 'libclass-c3-perl',
+			'arch'    => 'all',
 		);
 
 		eq_or_diff(
@@ -102,15 +104,18 @@ sub main {
 
 		my %deb3 = (
 			'version' => '1.000-1',
-			'package' => 'libanyevent-perl'
+			'package' => 'libanyevent-perl',
+			'arch'    => 'all',
 		);
 		my %deb4 = (
 			'version' => '0.22-1',
-			'package' => 'libclass-c3-perl'
+			'package' => 'libclass-c3-perl',
+			'arch'    => 'all',
 		);
 		my %deb5 = (
 			'version' => '4.00-1',
-			'package' => 'libclass-c4-perl'
+			'package' => 'libclass-c4-perl',
+			'arch'    => 'all',
 		);
 		my %result2 = (
 			'Class::C3' => {
@@ -171,6 +176,103 @@ sub main {
 		lives_ok { @web_sources = $aptpm->_etc_apt_sources } 'call parsing of /etc/apt/sources';
 		note('web sources on this machine:', "\n", join("\n", @web_sources));
 	};
+
+	FIND: {
+		my $aptpm = Debian::Apt::PM->new(sources => [
+			File::Spec->catfile($Bin, 'PerlPackages.bz2'),
+			File::Spec->catfile($Bin, 'PerlPackages2.bz2'),
+		]);
+		
+		eq_or_diff(
+			$aptpm->find('AnyEvent'), {
+				'1.000' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '1.000-1'
+				},
+				'5.23' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				}
+			},
+			'find()',
+		);
+
+		eq_or_diff(
+			$aptpm->find('AnyEvent', '0.01'), {
+				'1.000' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '1.000-1'
+				},
+				'min' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '1.000-1'
+				},
+				'5.23' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+				'max' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+			},
+			'find(min 0.01)',
+		);
+
+		eq_or_diff(
+			$aptpm->find('AnyEvent', '1.50'), {
+				'1.000' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '1.000-1'
+				},
+				'min' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+				'5.23' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+				'max' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+			},
+			'find(min 1.50)',
+		);
+
+		eq_or_diff(
+			$aptpm->find('AnyEvent', '5.3'), {
+				'1.000' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '1.000-1'
+				},
+				'5.23' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+				'max' => {
+					arch => 'all',
+					package => 'libanyevent-perl',
+					version => '5.230-1',
+				},
+				'min' => undef,
+			},
+			'find(min 5.3)',
+		);
+	}
 	
 	return 0;
 }

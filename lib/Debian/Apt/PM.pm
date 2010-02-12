@@ -4,25 +4,65 @@ package Debian::Apt::PM;
 
 Debian::Apt::PM - locate Perl Modules in Debian repositories
 
+=head1 NOTE
+
+EXPERIMENTAL => "use at your own risk"; B<< # you have bin warned >>
+
 =head1 SYNOPSIS
+
+Cmd-line:
+
+	apt-pm update
+	apt-pm find Moose
+	dpkg-scanpmpackages /path/to/debian/repository
+
+Module:
 
 	my $aptpm = Debian::Apt::PM->new(sources => [ 'PerlPackages.bz2' ])
 	$aptpm->update;
 	my %moose_locations = $aptpm->find('Moose');
 
-=head1 DESCRIPTION
+=head1 USAGE
 
-EXPERIMENTAL => "use at your own risk";    # you have bin warned
+=head2 COMMAND-LINE USAGE
 
-See F<apt-pm> command line script for doing updates and searches.
-See F<dpkg-scanpmpackages> for indexing Debian repositories.
+Add sources for Debian releases and components. Here is the complete list
+that can be reduced just to the wanted ones:
+
+	cat >> /etc/apt/sources.list << __END__
+	# for apt-pm
+	deb http://dbedia.com/Debian/mirror/ etch    main contrib non-free
+	deb http://dbedia.com/Debian/mirror/ lenny   main contrib non-free
+	deb http://dbedia.com/Debian/mirror/ sid     main contrib non-free
+	deb http://dbedia.com/Debian/mirror/ squeeze main contrib non-free
+	__END__
+
+Fetch the indexes:
+
+	apt-pm update
+
+Look for the CPAN modules:
+
+	apt-pm find Moose
+	# libmoose-perl_0.17-1_all: Moose 0.17
+	# libmoose-perl_0.94-1_i386: Moose 0.94
+	# libmoose-perl_0.97-1_i386: Moose 0.97
+	# libmoose-perl_0.54-1_all: Moose 0.54
+
+Look for the non-CPAN modules:
+	
+	apt-pm find Purple        
+	# libpurple0_2.4.3-4lenny5_i386: Purple 0.01
+	
+	apt-pm find Dpkg::Version
+	# dpkg-dev_1.14.28_all: Dpkg::Version 0
 
 =cut
 
 use warnings;
 use strict;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use 5.010;
 
@@ -35,18 +75,16 @@ use AptPkg::Config '$_config';
 use LWP::Simple 'mirror', 'RC_OK';
 use Carp 'croak';
 use JSON::Util;
+use CPAN::Version;
+use Storable 'dclone';
 
 use Debian::Apt::PM::SPc;
 
 
-=head1 PROPERTIES
-
-=cut
-
-has 'sources'         => (is => 'rw', isa => 'ArrayRef', lazy => 1, default => sub { [ glob($_[0]->cachedir.'/*.json') ] });
+has 'sources'         => (is => 'rw', isa => 'ArrayRef', lazy => 1, default => sub { [ glob($_[0]->_cachedir.'/*.json') ] });
 has '_modules_index'  => (is => 'rw', isa => 'HashRef', lazy => 1, default => sub { $_[0]->_create_modules_index });
 has '_apt_config'     => (is => 'rw', lazy => 1, default => sub { $AptPkg::Config::_config->init; $AptPkg::Config::_config; });
-has 'cachedir'        => (is => 'ro', lazy => 1, default => sub { Debian::Apt::PM::SPc->cachedir.'/apt/apt-pm' } );
+has '_cachedir'       => (is => 'ro', lazy => 1, default => sub { Debian::Apt::PM::SPc->cachedir.'/apt/apt-pm' } );
 
 
 =head1 METHODS
@@ -55,7 +93,18 @@ has 'cachedir'        => (is => 'ro', lazy => 1, default => sub { Debian::Apt::P
 
 Object constructor.
 
-=head2 find($module_name)
+=head3 PROPERTIES
+
+=over 4
+
+=item sources
+
+C<< isa => 'ArrayRef' >> of files that will be read to construct the lookup.
+By default it is filled with files from F</var/cache/apt/apt-pm/>.
+
+=back
+
+=head2 find($module_name, [$min_version])
 
 Returns hash with Perl versions as key and hash value having Debian version
 and package name. Example:
@@ -64,24 +113,74 @@ and package name. Example:
 		'0.94' => {
 			'version' => '0.94-1',
 			'package' => 'libmoose-perl'
+			'arch'    => 'i386'
 		},
 		'0.97' => {
 			'version' => '0.97-1',
 			'package' => 'libmoose-perl'
+			'arch'    => 'i386'
 		},
 		'0.54' => {
 			'version' => '0.54-1',
 			'package' => 'libmoose-perl'
+			'arch'    => 'i386'
 		},
 	};
+
+If C<$min_version> is set, returns C<min> and C<max> keys. C<max> has always
+the highest version:
+
+	'max' => {
+		'version' => '0.97-1',
+		'package' => 'libmoose-perl'
+		'arch'    => 'i386'
+	},
+
+C<min> is changing depending on C<$min_version>. Examples:
+
+	$min_version = '0.01';
+	'min' => {
+		'version' => '0.54-1',
+		'package' => 'libmoose-perl'
+		'arch'    => 'i386'
+	},
+	$min_version = '0.93';
+	'min' => {
+		'version' => '0.94-1',
+		'package' => 'libmoose-perl'
+		'arch'    => 'i386'
+	},
+	$min_version = '1.00';
+	'min' => undef,
 
 =cut
 
 sub find {
-	my $self = shift;
-	my $module = shift;
+	my $self        = shift;
+	my $module      = shift;
+	my $min_version = shift;
 	
-	return $self->_modules_index()->{$module};
+	my $versions_info = $self->_modules_index()->{$module};
+	return if not $versions_info;
+	
+	# clone the info
+	$versions_info = dclone($versions_info);
+	
+	# if not min then we are done
+	return $versions_info
+		if not defined $min_version;
+
+	# sort available versions and grep smaller than requested
+	my @versions =
+		sort { CPAN::Version->vcmp($a, $b) }
+		keys %{$versions_info}
+	;
+
+	$versions_info->{'max'} = $versions_info->{$versions[-1]};
+	@versions = grep { not CPAN::Version->vlt($_, $min_version) } @versions;
+	$versions_info->{'min'} = (@versions ? $versions_info->{$versions[0]} : undef);
+	
+	return $versions_info;
 }
 
 =head2 update
@@ -95,11 +194,11 @@ All F<PerlPackages.bz2> are stored to F</var/cache/apt/apt-pm/>.
 sub update {
 	my $self = shift;
 	
-	my @existing = glob($self->cachedir.'/*.bz2');
+	my @existing = glob($self->_cachedir.'/*.bz2');
 	foreach my $url ($self->_etc_apt_sources) {
 		my $filename = $url;
 		$filename =~ s/[^a-zA-Z0-9\-\.]/_/gxms;
-		$filename = $self->cachedir.'/'.$filename;
+		$filename = $self->_cachedir.'/'.$filename;
 		@existing = grep { $_ ne $filename } @existing;
 		if (mirror($url, $filename) == RC_OK) {
 			my $json_filename = $filename; $json_filename =~ s/\.bz2$/.json/;
@@ -114,6 +213,20 @@ sub update {
 	foreach my $old_filename (@existing) {
 		my $json_filename = $old_filename; $json_filename =~ s/\.bz2$/.json/;
 		unlink($old_filename, $json_filename);
+	}
+}
+
+=head2 clean
+
+Remove all files fom cache dir.
+
+=cut
+
+sub clean {
+	my $self = shift;
+	
+	foreach my $filename (glob($self->_cachedir.'/*')) {
+		unlink($filename) or warn 'failed to remove '.$filename."\n";
 	}
 }
 
@@ -172,6 +285,7 @@ sub _parse_perlpackages_content {
 		my %deb = (
 			'version' => _trim($entry->{'para'}->{'Version'}),
 			'package' => _trim($entry->{'para'}->{'Package'}),
+			'arch'    => _trim($entry->{'para'}->{'Architecture'}),
 		);
 		
 		push @content_list, { modules => \%modules, deb => \%deb };
