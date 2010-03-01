@@ -7,6 +7,9 @@ dpkg-scanpmpackages - creates PerlPackages index from .deb files
 =head1 SYNOPSIS
 
 	reprepro-update-perl-packages [repository_folder]
+	
+		--blacklist=comman,sep,package,names
+			optional - packages that should be not indexed
 
 =head1 DESCRIPTION
 
@@ -31,14 +34,17 @@ use IO::Any 0.04;
 use Parse::Deb::Control 0.03;
 use List::MoreUtils 'any';
 use IO::Uncompress::Bunzip2 qw(bunzip2 $Bunzip2Error) ;
+use Carp 'croak';
 
 exit main();
 
 sub main {
 	my $help;
 	my $use_old_index;
+	my $blacklisted_pkgs_arg = 'r-cran-gdata';
 	GetOptions(
-		'help|h'        => \$help,
+		'help|h'      => \$help,
+		'blacklist=s' => \$blacklisted_pkgs_arg,
 	) or pod2usage;
 	pod2usage if $help;
 	
@@ -52,6 +58,8 @@ sub main {
 		->name( 'Packages.bz2' )
 		->in( $mirror_location )
 	;
+	
+	my @blacklisted_pkgs = split(/\s*,\s*/, $blacklisted_pkgs_arg);
 
 	foreach my $packages_file (@packages_files) {
 		print STDERR 'processing ', $packages_file, "\n";
@@ -61,6 +69,7 @@ sub main {
 		my $packages_file_content;
 		bunzip2 \$packages_bz_content => \$packages_file_content or die "bunzip2 failed: $Bunzip2Error\n";
 
+		my %deb_to_src;
 		my $packages = Parse::Deb::Control->new($packages_file_content);
 		my @deb_files =
 			grep {
@@ -68,10 +77,16 @@ sub main {
 					if ! -f File::Spec->catfile($mirror_location, $_);
 				1;
 			}
-			map { s/\s*$//; s/^\s*//; $_ }
-			map { ${$_->{'value'}} } $packages->get_keys('Filename')
+			map { _trim($_->{'para'}->{'Filename'}) }
+			map {
+				$deb_to_src{_trim($_->{'para'}->{'Filename'})} = _trim($_->{'para'}->{'Source'})
+					if $_->{'para'}->{'Source'};
+				$_;
+			}
+			grep { not _trim($_->{'para'}->{'Package'}) ~~ \@blacklisted_pkgs }
+			$packages->get_keys('Filename')
 		;
-		
+				
 		my %provides;
 		my %deb_filenames;
 
@@ -86,7 +101,7 @@ sub main {
 				$filename =~ s/\s*$//;
 				$filename =~ s/^\s//;
 				my $para  = '';
-				foreach my $key (qw(Package Architecture Filename Version Perl-Modules)) {
+				foreach my $key (qw(Package Architecture Filename Version Source Perl-Modules)) {
 					$para .= $key.':'.$entry->{'para'}->{$key}
 						if $entry->{'para'}->{$key};
 				}
@@ -132,8 +147,17 @@ sub main {
 				#print 'processing ', $pm_file, "\n";
 				
 				$pm_file =~ s{^$tmp_dir.(.+)$}{$1};
+				
+				# FIXME auto add .pm files that are in /usr/share/perl5/ and friends with version 0
+				#       so it is possible to locate those modules
+				
 				foreach my $package (keys %{$info->{'versions'}}) {
 					next if $package eq 'main';
+					
+					# skip inside packages
+					my $package_file = $package.'.pm';
+					$package_file =~ s{::}{/}xmsg;
+					next if substr($pm_file,0-length($package_file)) ne $package_file;
 					
 					# set version to undef 
 					my $version = (
@@ -142,7 +166,6 @@ sub main {
 						: 0
 					);
 					
-					# add version info to the provides only if it's not already there (we are interrested in the oldest package that has that version)
 					$provides{$deb_name}->{$package} = $version;
 				}
 			}
@@ -164,7 +187,12 @@ sub main {
 					$perl_packages_fh
 					'Architecture: ', $arch, "\n",
 					'Filename: ', $deb_filenames{$deb_name}, "\n",
-					'Version: ', $version, "\n"
+					'Version: ', $version, "\n",
+					(
+						$deb_to_src{$deb_filenames{$deb_name}}
+						? ('Source: ', $deb_to_src{$deb_filenames{$deb_name}}, "\n")
+						: ()
+					),
 				;
 				
 				my $perl_modules_count = scalar keys %{$provides{$deb_name}};
@@ -198,6 +226,16 @@ sub main {
 	}
 
 	return 0;
+}
+
+sub _trim {
+	my $text = shift;
+	croak 'too much argauments' if @_;
+	
+	$text =~ s/^\s+//xms;
+	$text =~ s/\s+$//xms;
+	
+	return $text;
 }
 
 __END__

@@ -31,10 +31,10 @@ that can be reduced just to the wanted ones:
 
 	cat >> /etc/apt/sources.list << __END__
 	# for apt-pm
-	deb http://dbedia.com/Debian/mirror/ etch    main contrib non-free
-	deb http://dbedia.com/Debian/mirror/ lenny   main contrib non-free
-	deb http://dbedia.com/Debian/mirror/ sid     main contrib non-free
-	deb http://dbedia.com/Debian/mirror/ squeeze main contrib non-free
+	deb http://debian.meon.sk/mirror/ etch    main contrib non-free
+	deb http://debian.meon.sk/mirror/ lenny   main contrib non-free
+	deb http://debian.meon.sk/mirror/ sid     main contrib non-free
+	deb http://debian.meon.sk/mirror/ squeeze main contrib non-free
 	__END__
 
 Fetch the indexes:
@@ -62,7 +62,7 @@ Look for the non-CPAN modules:
 use warnings;
 use strict;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use 5.010;
 
@@ -77,14 +77,25 @@ use Carp 'croak';
 use JSON::Util;
 use CPAN::Version;
 use Storable 'dclone';
+use List::MoreUtils 'uniq';
+use File::is;
 
 use Debian::Apt::PM::SPc;
 
 
-has 'sources'         => (is => 'rw', isa => 'ArrayRef', lazy => 1, default => sub { [ glob($_[0]->_cachedir.'/*.json') ] });
+has 'sources'         => (is => 'rw', isa => 'ArrayRef', lazy => 1, default => sub { [ glob($_[0]->cachedir.'/all.index') ] });
 has '_modules_index'  => (is => 'rw', isa => 'HashRef', lazy => 1, default => sub { $_[0]->_create_modules_index });
 has '_apt_config'     => (is => 'rw', lazy => 1, default => sub { $AptPkg::Config::_config->init; $AptPkg::Config::_config; });
-has '_cachedir'       => (is => 'ro', lazy => 1, default => sub { Debian::Apt::PM::SPc->cachedir.'/apt/apt-pm' } );
+has 'cachedir'        => (
+	is      => 'rw',
+	lazy    => 1,
+	default => sub {
+		Debian::Apt::PM::SPc->cachedir
+		.'/apt/apt-pm/deb'
+		.($_[0]->repo_type eq 'deb-src' ? '-src' : '' )
+	}
+);
+has 'repo_type'       => (is => 'rw', lazy => 1, default => 'deb');
 
 
 =head1 METHODS
@@ -101,6 +112,15 @@ Object constructor.
 
 C<< isa => 'ArrayRef' >> of files that will be read to construct the lookup.
 By default it is filled with files from F</var/cache/apt/apt-pm/>.
+
+=item cachedir
+
+Is the folder where indexes cache files will be stored.
+Default is F</var/cache/apt/apt-pm/deb/>.
+
+=item repo_type
+
+C<deb|deb-src>
 
 =back
 
@@ -194,11 +214,11 @@ All F<PerlPackages.bz2> are stored to F</var/cache/apt/apt-pm/>.
 sub update {
 	my $self = shift;
 	
-	my @existing = glob($self->_cachedir.'/*.bz2');
+	my @existing = glob($self->cachedir.'/*.bz2');
 	foreach my $url ($self->_etc_apt_sources) {
 		my $filename = $url;
 		$filename =~ s/[^a-zA-Z0-9\-\.]/_/gxms;
-		$filename = $self->_cachedir.'/'.$filename;
+		$filename = $self->cachedir.'/'.$filename;
 		@existing = grep { $_ ne $filename } @existing;
 		if (mirror($url, $filename) == RC_OK) {
 			my $json_filename = $filename; $json_filename =~ s/\.bz2$/.json/;
@@ -214,6 +234,14 @@ sub update {
 		my $json_filename = $old_filename; $json_filename =~ s/\.bz2$/.json/;
 		unlink($old_filename, $json_filename);
 	}
+
+	my $index_filename = File::Spec->catfile($self->cachedir, 'all.index');
+	my $aptpm = Debian::Apt::PM->new(
+		cachedir => $self->cachedir,
+		sources  => [ glob($self->cachedir.'/*.json') ],
+	);
+	JSON::Util->encode($aptpm->_create_modules_index, [$index_filename])
+		if (not -f $index_filename) or File::is->older($index_filename, glob($self->cachedir.'/*.json'));
 }
 
 =head2 clean
@@ -225,13 +253,17 @@ Remove all files fom cache dir.
 sub clean {
 	my $self = shift;
 	
-	foreach my $filename (glob($self->_cachedir.'/*')) {
+	foreach my $filename (glob($self->cachedir.'/*')) {
 		unlink($filename) or warn 'failed to remove '.$filename."\n";
 	}
 }
 
 sub _etc_apt_sources {
 	my $self = shift;
+	
+	my $repo_type = $self->repo_type;
+	$repo_type = 'deb'
+		if ($repo_type ne 'deb-src');
 
 	my $apt_config = $self->_apt_config;
 	my @sources_files = (
@@ -252,25 +284,30 @@ sub _etc_apt_sources {
 		given ($line) {
 			when (/^\s*$/) {};          # skip empty lines
 			when (/^\s*#/) {};          # skip comments
-			when (/^\s*deb-src/) {};    # skip source
-			when (/^ \s* deb \s+ ([^ ]+) \s+ ([^ ]+) \s+ (.+) $/xms) {
+			when (/^ \s* $repo_type \s+ ([^ ]+) \s+ ([^ ]+) (?: \s+ (.+) | \/ \s*) $/xms) {
 				my ($url, $path, $components_string) = ($1, $2, $3);
-				my @components = grep { $_ } split(/\s+/, $components_string);
+				my @components = grep { $_ } split(/\s+/, $components_string || '');
 				
 				if ($url !~ m{^(:? http:// | ftp:// | file://)}xms) {
 					warn 'unsupported schema - '.$url;
 					next;
 				}
 				
-				push @urls, map {
-					$url.'dists/'.$path.'/'.$_.'/binary-'.$arch.'/PerlPackages.bz2'
-				} @components;
+				if (@components) {
+					push @urls, map {
+						$url.'dists/'.$path.'/'.$_.'/binary-'.$arch.'/PerlPackages.bz2'
+					} @components;
+				}
+				else {
+					push @urls, $url.$path.'/PerlPackages.bz2';
+				}
 			};
+			when (/^ \s* (?: deb | deb-src ) \s /xms) {}; # skip !$repo_type
 			default { warn 'unknown sources.list line - '.$line };
 		}
 	}
 	
-	return @urls;
+	return uniq @urls;
 }
 
 sub _parse_perlpackages_content {
@@ -284,7 +321,11 @@ sub _parse_perlpackages_content {
 		
 		my %deb = (
 			'version' => _trim($entry->{'para'}->{'Version'}),
-			'package' => _trim($entry->{'para'}->{'Package'}),
+			'package' => (
+				$self->repo_type eq 'deb-src'
+				? _trim($entry->{'para'}->{'Source'}) || _trim($entry->{'para'}->{'Package'})
+				: _trim($entry->{'para'}->{'Package'})
+			),
 			'arch'    => _trim($entry->{'para'}->{'Architecture'}),
 		);
 		
@@ -310,6 +351,9 @@ sub _create_modules_index {
 				my $bz_content = IO::Any->slurp($src);
 				bunzip2 \$bz_content => \$content or die "bunzip2 failed: $Bunzip2Error\n";
 				@content_list = $self->_parse_perlpackages_content($content);
+			}
+			when (m/all\.index$/) {
+				return JSON::Util->decode([$src]);
 			}
 			when (m/\.json$/) {
 				@content_list = @{JSON::Util->decode([$src])};
@@ -353,6 +397,8 @@ sub _parse_perl_modules {
 sub _trim {
 	my $text = shift;
 	croak 'too much argauments' if @_;
+	
+	return if not defined $text;
 	
 	$text =~ s/^\s+//xms;
 	$text =~ s/\s+$//xms;
