@@ -14,11 +14,11 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 f731489937fa15b39f3c69d368610cdb8ae5294b Build.PL
-SHA1 698f14987dba331f940ee0009c08298e3563580a Changes
-SHA1 9505f1ffcf158588ef77b683530d94782f61228f MANIFEST
-SHA1 61ecc6bacd96506882cd5768df888cf02be91a99 META.yml
-SHA1 9059ab5369e9d16ccaa946e17fdf556ca5c28c31 README
+SHA1 47a2f3580836654ca64b2870216319e4558402e2 Build.PL
+SHA1 c4436ebd807dce3a8d20cffb6fb43994563f1eb1 Changes
+SHA1 1c28aaa1a040433ad4bad66646217c3913fe0a2b MANIFEST
+SHA1 1833d7e5b7475294213d7f6df844630fd24658c1 META.yml
+SHA1 5c02d9d487df852cd6a0549e375e03ac7bb1e848 README
 SHA1 da39a3ee5e6b4b0d3255bfef95601890afd80709 cache/apt/apt-pm/deb-src/.exists
 SHA1 da39a3ee5e6b4b0d3255bfef95601890afd80709 cache/apt/apt-pm/deb/.exists
 SHA1 5db8c043a66a75509600751260c411d28620b9b0 examples/repo/Makefile
@@ -29,13 +29,14 @@ SHA1 f86b0364fafe45fdc8bc4c0586e60d212ba1f471 examples/reprepo/bin/import-new-pa
 SHA1 db5c27284b42135da5a0bf14e1160337bbd78834 examples/reprepo/www/repo/.htaccess
 SHA1 b085ce67d862f63e988f1a5d9c2078389e2ffc8a examples/reprepo/www/repo/conf/distributions
 SHA1 0ecc4006ab6c22b4bd6fd918235e7d6133f48462 examples/reprepo/www/repo/conf/uploaders
-SHA1 59d05c08eb567acf1fe388f3e9b31f495c05c6dc lib/Debian/Apt/PM.pm
-SHA1 fa2d836ae3910f3968986f168d3f5618bf966bb2 lib/Debian/Apt/PM/SPc.pm
+SHA1 0b82d0c5d831b125ce04a87c4c6878ed888dddd8 lib/Debian/Apt/PM.pm
+SHA1 5ee815e167731626855990769132f1662b9fff05 lib/Debian/Apt/PM/SPc.pm
+SHA1 36cde8684361eabfa145cb39ba0514e2860cd39c lib/Debian/Apt/PM/SettingUpBuildSystem.pod
 SHA1 29c4a77d65f9f59b1b0c1d216cf1867089bd7d4c patches/DhMakePerl.pm.patch
 SHA1 5773af06d93e7910a84ff333e7539dfac9c6dd9b patches/Distribution.pm.patch
 SHA1 6c099d66a1ae13be84773acbc79618ec81ace41b script/apt-pm
-SHA1 ec21715978e1b8f80f88c848b5fbb529df823738 script/dh-make-pm
-SHA1 6705174c91e5ef4def86fa05c2af2c3a4666fe7d script/dpkg-scanpmpackages
+SHA1 303a0ffcb3ee23e86beffd2461bac04bd6435e52 script/dh-make-pm
+SHA1 08b681630e45f826eeb2e045a9d86828d98a4294 script/dpkg-scanpmpackages
 SHA1 da39a3ee5e6b4b0d3255bfef95601890afd80709 sharedstate/dh-make-pm/.exists
 SHA1 605f05a5336cc37a476bb10b218f5ad1a2bd340d t/00_compile.t
 SHA1 e5a56b2164db94f082c930e9114bd1a5ca105bc0 t/01_Debian-Apt-PM.t
@@ -49,7 +50,7 @@ SHA1 640935336dc1123c0069bcf5432bcaedc2cf22d3 t/pod.t
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.10 (GNU/Linux)
 
-iEYEARECAAYFAkuMHG0ACgkQC0OgUPgL2Sd15gCcCDsGUnw30Dw4z2TKxEfc47RH
-3FkAoIQ2IFw9ruGetYLKOP2TlN71Tsgh
-=z8L1
+iEYEARECAAYFAkuX8e4ACgkQC0OgUPgL2SdbdACZAWEF3Tp3XAYz6+ivUkvCMuUz
+c5oAn0/C5P2lcunRd2C+lALffpxmcDIB
+=b6XH
 -----END PGP SIGNATURE-----
