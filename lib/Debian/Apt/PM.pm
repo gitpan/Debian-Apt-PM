@@ -10,7 +10,7 @@ EXPERIMENTAL => "use at your own risk"; B<< # you have bin warned >>
 
 =head1 SYNOPSIS
 
-Cmd-line:
+command line:
 
 	apt-pm update
 	apt-pm find Moose
@@ -42,10 +42,11 @@ that can be reduced just to the wanted ones:
 
 	cat >> /etc/apt/sources.list << __END__
 	# for apt-pm
-	deb http://debian.meon.sk/mirror/ etch    main contrib non-free
-	deb http://debian.meon.sk/mirror/ lenny   main contrib non-free
-	deb http://debian.meon.sk/mirror/ sid     main contrib non-free
-	deb http://debian.meon.sk/mirror/ squeeze main contrib non-free
+	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     lenny   main contrib non-free
+	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     squeeze main contrib non-free
+	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     wheezy  main contrib non-free
+	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     sid     main contrib non-free
+
 	__END__
 
 Fetch the indexes:
@@ -73,7 +74,7 @@ Look for the non-CPAN modules:
 use warnings;
 use strict;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use 5.010;
 
@@ -252,12 +253,12 @@ sub update {
 		sources  => [ glob($self->cachedir.'/*.json') ],
 	);
 	JSON::Util->encode($aptpm->_create_modules_index, [$index_filename])
-		if (not -f $index_filename) or File::is->older($index_filename, glob($self->cachedir.'/*.json'));
+		if (not -f $index_filename) or File::is->older($index_filename, glob($self->cachedir.'/*.json')) or @existing;
 }
 
 =head2 clean
 
-Remove all files fom cache dir.
+Remove all files from cache folder.
 
 =cut
 
@@ -337,7 +338,9 @@ sub _parse_perlpackages_content {
 				? _trim($entry->{'para'}->{'Source'}) || _trim($entry->{'para'}->{'Package'})
 				: _trim($entry->{'para'}->{'Package'})
 			),
-			'arch'    => _trim($entry->{'para'}->{'Architecture'}),
+			'arch'         => _trim($entry->{'para'}->{'Architecture'}),
+			'distribution' => _trim($entry->{'para'}->{'Distribution'}),
+			'component'    => _trim($entry->{'para'}->{'Component'}),
 		);
 		
 		push @content_list, { modules => \%modules, deb => \%deb };
@@ -409,7 +412,7 @@ sub _trim {
 	my $text = shift;
 	croak 'too much argauments' if @_;
 	
-	return if not defined $text;
+	return '' if not defined $text;
 	
 	$text =~ s/^\s+//xms;
 	$text =~ s/\s+$//xms;

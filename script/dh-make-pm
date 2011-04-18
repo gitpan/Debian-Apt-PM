@@ -8,14 +8,17 @@ dh-make-pm - build Debian packages (dh-make-perl on pbuilder+cowdancer  steroids
 
 	dh-make-pm --cpan Debian::Apt::PM
 	
-		--cpan          which module to build
-		--no-retry      will skip packaging modules that already failed to package
-		--dh-make-perl  set different command to execute instead of dh-make-perl to create debian/ folder.
+		--cpan              which module to build
+		--no-retry          will skip packaging modules that already failed to package
+		--dh-make-perl=s    set different command to execute instead of dh-make-perl to create debian/ folder.
+		--no-cpan-patches   do not apply CPAN::Patches
+		--tilde=s           string that should apper after version~ (ex. 2.00~string)
+		--debian-version	set debian version string, default is 1 (ex. 2.00-1)
 
 =head1 DESCRIPTION
 
-F<dh-make-pm> is basicaly recursive F<dh-make-perl> that will build the
-deb package from CPAN distribution and all it's dependecies properly
+F<dh-make-pm> is basically recursive F<dh-make-perl> that will build the
+deb package from CPAN distribution and all it's dependencies properly
 indexing and creating repository.
 
 =head1 USAGE
@@ -94,8 +97,12 @@ use CPAN;
 use File::Basename 'basename';
 use File::Copy 'copy';
 use JSON::Util;
-use Debian::Apt::PM::SPc;
+use Module::Depends::Intrusive;
+use CPAN::Patches;
+use CPAN::Patches::Plugin::Debian 0.03;    # needed for `cpan-patches --update-debian`
+use POSIX 'SEEK_SET';
 
+use Debian::Apt::PM::SPc;
 use Debian::Apt::PM;
 our $aptpm = Debian::Apt::PM->new();
 
@@ -109,6 +116,8 @@ sub main {
 	my $no_build_retry    = 0;
 	my $dh_make_perl      = 'dh-make-perl';
 	my $no_cpan_patches   = 0;
+	my $tilde             = '';
+	my $debian_pkg_version;
 	GetOptions(
 		'help|h'  => \$help,
 		'cpan=s'  => \$module_name,
@@ -117,9 +126,16 @@ sub main {
 		'no-retry' => \$no_build_retry,
 		'dh-make-perl=s' => \$dh_make_perl,
 		'no-cpan-patches' => \$no_cpan_patches,
+		'tilde=s' => \$tilde,
+		'debian-version=s' => \$debian_pkg_version,
 	) or pod2usage;
 	pod2usage if $help;
 	pod2usage if not $module_name;
+	
+	if ($tilde and defined $debian_pkg_version) {
+		print STDERR '--tilde and --debian-version can not be set both at the same time';
+		pod2usage;
+	}
 
 	my ($deb_in_root_of_repo) = </var/cache/pbuilder/result/*.deb>;
 	die $deb_in_root_of_repo.' left unsorted'
@@ -129,12 +145,7 @@ sub main {
 		if not -d $repository_folder;
 	die $build_folder.' folder does not exists'
 		if not -d $build_folder;
-	
-	my $build_history_filename = Debian::Apt::PM::SPc->sharedstatedir.'/dh-make-pm/build-history.json';
-	JSON::Util->encode({}, [$build_history_filename])
-		if not -f $build_history_filename;
-	my %build_history = %{JSON::Util->decode([$build_history_filename])};
-	
+		
 	my %all_prereq;
 	my @to_make = ($module_name);
 
@@ -145,9 +156,14 @@ sub main {
 	while (@to_make > $i) {
 		my %prereq = find_prereq($to_make[$i++]);
 		foreach my $new_req (keys %prereq) {
+			$new_req =~ s/-/::/xmsg;     # some META.yml prereq has "-" insted of ::
 			if (not $all_prereq{$new_req}) {
 				$all_prereq{$new_req} = 1;
 				push @to_make, $new_req;
+			}
+			else {
+				# put the new_req that was already needed to the end (needs to be build first)
+				@to_make = ((grep { $_ ne $new_req } @to_make),  $new_req);
 			}
 		}
 		die 'too many pre requisities ('.join(',', @to_make).') for '.$module_name.' giving up'
@@ -171,14 +187,13 @@ sub main {
 		
 		# don't retry to build a tarball that failed build before
 		die $dist_tarball.' previous build failed'
-			if ($no_build_retry and $build_history{$dist_tarball}->{'fail'});
+			if ($no_build_retry and build_history($dist_tarball)->{'fail'});
 
 		# refresh the repository
 		system('sudo', 'cowbuilder', '--update', '--bindmounts', '/var/cache/pbuilder/result/') and die $!;
 				
 		# mark current tarball as fail
-		$build_history{$dist_tarball}->{'fail'} = time();
-		JSON::Util->encode(\%build_history, [$build_history_filename], { 'atomic' => 1 });
+		build_history($dist_tarball, 'fail');
 		
 		chdir($build_folder) or die $!;
 
@@ -191,16 +206,39 @@ sub main {
 		rename($folder, $folder.'.orig');
 		extract_dist_tarball($dist_tarball);
 		
+		# make sure we have META.yml dh-make-perl needs it
+		eval { CPAN::Patches->read_meta($folder) } || CPAN::Patches->read_meta_intrusive($folder);
+		
 		chdir($folder);
 		system($dh_make_perl) and die $!;
 		if (not $no_cpan_patches) {
-			system('cpan-patches', 'update-debian') and die $!;
+			system(
+				'cpan-patches',
+				'--patch-set=/var/lib/cpan-patches/set',
+				'--patch-set=/var/lib/cpan-patches/debian-set',
+				'update-debian'
+			) and die $!;
 		}
 		
 		my $changes_file = IO::Any->slurp('debian/changelog');
 		die 'failed to parse package name and version from debian/changelog'
-			if $changes_file !~ m/\A([-a-z0-9]+) \s+ \(([^)]+)\)/xms;
-		my ($package_name, $package_version) = ($1, $2);
+			if $changes_file !~ m/ \A ([-a-z0-9]+) \s+ \( ([^)]+) \) (.+) \Z/xms;
+		my ($package_name, $package_version, $change_log_rest) = ($1, $2, $3);
+		
+		# update/set package version string
+		if ($tilde or (defined $debian_pkg_version)) {
+			if ($tilde) {
+				$package_version =~ s/~ .* $//xms;
+				$package_version =~ s/- .* $//xms;
+				$package_version .= '~'.$tilde;
+			}
+			elsif (defined $debian_pkg_version) {
+				$package_version =~ s/- .* $//xms;
+				$package_version .= '-'.$debian_pkg_version;
+			}
+			IO::Any->spew('debian/changelog', $package_name.' ('.$package_version.')'.$change_log_rest)
+		}
+		
 		chdir('..');
 		my $debian_folder = $package_name.'-'.$package_version;
 		$debian_folder =~ s/-[^-]+$//xms;    # strip debian packaging version
@@ -232,9 +270,7 @@ sub main {
 		system('mv', glob($deb_basename.'*'), '/var/cache/pbuilder/result/unstable') and die $!;
 
 		# mark current tarball as pass
-		delete $build_history{$dist_tarball}->{'fail'};
-		$build_history{$dist_tarball}->{'pass'} = time();
-		JSON::Util->encode(\%build_history, [$build_history_filename], { 'atomic' => 1 });
+		build_history($dist_tarball, 'pass');
 
 		# refresh repository and apt-pm index
 		chdir($repository_folder);
@@ -248,9 +284,7 @@ sub main {
 
 sub find_prereq {
 	my $module_name = shift;
-	
-	return if $module_name ~~ ['perl'];
-	
+		
 	my $dist = CPAN::Shell->expand('Module', $module_name);
 	$dist = $dist->distribution
 		if $dist;
@@ -258,8 +292,28 @@ sub find_prereq {
 		if not $dist;
 	
 	$dist->get;
-	my $meta = $dist->parse_meta_yml;
-	my %prereq = map { %{$meta->{$_} || {}} } qw(requires build_requires configure_requires recommends);
+	my $meta =
+		$dist->parse_meta_yml
+		|| Module::Depends::Intrusive->new->dist_dir( $dist->{"build_dir"} )->find_modules
+		|| die 'failed to resolv dependencies for '.$module_name
+	;
+	
+	my %prereq;
+	foreach my $req_type (qw(requires build_requires configure_requires recommends)) {
+		my %req = %{$meta->{$req_type} || {}};
+		while (my ($need_module, $need_version) = each %req) {
+			return if $need_module ~~ ['perl'];
+
+			# we need the highest version of a module
+			next if (
+				(exists $prereq{$need_module})
+				and (CPAN::Version->vcmp($need_version, $prereq{$need_module}) != 1)
+			);
+			
+			$prereq{$need_module} = $need_version;
+		}
+		
+	}
 
     my @debs;
     my @build_dep;
@@ -295,3 +349,36 @@ sub extract_dist_tarball {
 		}
 	}
 }
+
+sub build_history {
+	my $tarball = shift;
+	my $status  = shift;
+	
+	state $build_history_filename = Debian::Apt::PM::SPc->sharedstatedir.'/dh-make-pm/build-history.json';
+
+	my $fh = IO::Any->new([$build_history_filename], '+>>', { 'LOCK_EX' => 1 });
+	seek($fh, 0, SEEK_SET);
+	my $json_string = do {local $/; <$fh>} || '{}';
+
+	my %build_history = %{JSON::Util->decode(\$json_string)};
+	
+	if ($status) {
+		$build_history{$tarball} ||= {};
+		delete $build_history{$tarball}->{'fail'};
+		delete $build_history{$tarball}->{'pass'};
+		$build_history{$tarball} = { $status => time() };
+		truncate($fh, 0);
+		print $fh JSON::Util->encode(\%build_history);
+	}
+	
+	close $fh;
+	
+	return $build_history{$tarball} || {};
+}
+
+__END__
+
+=head1 TODO
+
+    * when source Debian package already exists, get the source and backport
+    * build conflicts from the apt-file

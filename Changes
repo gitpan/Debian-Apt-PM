@@ -1,10 +1,22 @@
 Revision history for Debian-Apt-PM
 
+0.05    18 Apr 2011 (last day of QA Hackathon 2011 in Amsterdam)
+    * dh-make-pm --tilde added
+    * dh-make-pm --debian-version added
+    * dh-make-pm will generate META.yml if not present
+    * dh-make-pm uses /var/lib/cpan-patches/set and /var/lib/cpan-patches/debian-set
+      to find patches
+    * handles properly same module in diffrent types of require with
+      different versions properly
+    * corrected order for packaging dependecies
+    * add distribution and component to package info
+    * basic CPAN => Debian package mapping web
+
 0.04
-   * s/Dpkg::Version/Debian::Dpkg::Version/
-   * Pod update
-   * no cpan-patches switch
-   * repository+apt-pm only after successful build
+    * s/Dpkg::Version/Debian::Dpkg::Version/
+    * Pod update
+    * no cpan-patches switch
+    * repository+apt-pm only after successful build
 
 0.03
     * dh-make-pm

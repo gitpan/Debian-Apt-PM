@@ -23,7 +23,7 @@ my $builder = Module::Build::SysPath->new(
         'Moose'                   => 0,
         'IO::Uncompress::Bunzip2' => 0,
         'IO::Any'                 => 0,
-        'Parse::Deb::Control'     => 0.03,
+        'Parse::Deb::Control'     => 0.04,   # get_paras()
         'Debian::Dpkg::Version'   => 0,
         'AptPkg::Config'          => 0,
         'LWP::Simple'             => 0,
@@ -43,10 +43,15 @@ my $builder = Module::Build::SysPath->new(
         'File::Copy'              => 0,
         'CPAN'                    => 0,
         'File::is'                => 0,
-        'CPAN::Patches::Plugin::Debian' => 0,
+        'CPAN::Patches'           => 0,
+        'CPAN::Patches::Plugin::Debian' => 0.03,    # stackable patch set folders
+        'Module::Depends::Intrusive'    => 0,
+        'Digest::MD5'             => 0,
+        'CPAN::PackageDetails'    => 0,
     },
     script_files => [
         'script/apt-pm',
+        'script/apt-pm-web',
         'script/dpkg-scanpmpackages',
         'script/dh-make-pm',
     ],
