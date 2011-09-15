@@ -12,6 +12,7 @@ my $builder = Module::Build::SysPath->new(
     
     configure_requires => {
         'Module::Build::SysPath' => 0.13,
+        'Module::Build'          => '0.3607',
     },
     build_requires => {
         'Module::Build::SysPath' => 0.13,
@@ -48,6 +49,10 @@ my $builder = Module::Build::SysPath->new(
         'Module::Depends::Intrusive'    => 0,
         'Digest::MD5'             => 0,
         'CPAN::PackageDetails'    => 0,
+        'MetaCPAN::API'           => 0,
+        'IO::Uncompress::Gunzip'  => 0,
+        'CPAN'                    => 0,
+        'CPAN::Module'            => 0,
     },
     script_files => [
         'script/apt-pm',
@@ -57,7 +62,6 @@ my $builder = Module::Build::SysPath->new(
     ],
     add_to_cleanup => [ 'Debian-Apt-PM-*' ],
     create_readme  => 1,
-    sign           => 1,
     meta_merge => {
         resources => {
             repository => 'git://github.com/jozef/Debian-Apt-PM.git',

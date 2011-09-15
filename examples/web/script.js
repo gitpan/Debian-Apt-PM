@@ -4,6 +4,7 @@ $(document).ready(function() {
 	$('form').submit(cpan2deb.submitForm);
 	$(window).bind('hashchange', cpan2deb.parseParams);
 	cpan2deb.parseParams();
+	$('input[type="search"]').focus();
 });
 
 cpan2deb.parseParams = function () {
@@ -23,7 +24,10 @@ cpan2deb.module_name = function (new_name) {
 		$('input[name="q"]').val(new_name);
 	}
 	
-	return $('input[name="q"]').val();
+	// FIXME trim the val() !!!
+	var q = $('input[name="q"]').val();
+	q = q.replace(/^\s+|\s+$/g, '');
+	return q;
 }
 
 cpan2deb.submitForm = function () {
@@ -61,6 +65,7 @@ cpan2deb.search = function (q) {
 cpan2deb.searchFinish = function () {
 	$('.load').hide();
 	$('input[type="submit"]').show();
+	$('input[type="search"]').focus();
 }
 
 cpan2deb.show_module_info = function (module_name, module_info) {
@@ -79,8 +84,8 @@ cpan2deb.show_module_info = function (module_name, module_info) {
 				'This module is not packaged for Debian.<br/>'
 				+'There are 2 ways to fix this:<br/>'
 				+'<ul>'
-				+' <li>use `reportbug` and <a href="http://pkg-perl.alioth.debian.org/howto/RFP.html">fill-in RTP</a></li>'
-				+' <li><a href="http://pkg-perl.alioth.debian.org/">join Debian Perl Group</a> and help with packaging</li>'
+				+' <li>Use `reportbug wnpp` to <a href="http://pkg-perl.alioth.debian.org/howto/RFP.html">file an RFP</a>.</li>'
+				+' <li><a href="http://wiki.debian.org/Teams/DebianPerlGroup/Welcome">Join the Debian Perl Group</a> and help with packaging.</li>'
 				+'</ul>'
 			];
 		}
@@ -93,7 +98,7 @@ cpan2deb.show_module_info = function (module_name, module_info) {
 			
 			debs.push(
 				'<div>'
-				+'Package: <a href="http://packages.debian.org/search?searchon=names&amp;suite=all&amp;section=all&amp;keywords='+encodeURIComponent(deb.package)+'">'+deb.package+'</a> [<a href="http://bugs.debian.org/cgi-bin/pkgreport.cgi?pkg='+deb.package+';dist='+deb.distribution+'">bugs</a>] [<a href="http://patch-tracker.debian.org/package/'+deb.package+'">patches</a>]<br/>'
+				+'Package: <a href="http://packages.qa.debian.org/'+encodeURIComponent(deb.package)+'">'+deb.package+'</a> [<a href="http://bugs.debian.org/cgi-bin/pkgreport.cgi?pkg='+encodeURIComponent(deb.package)+';dist='+encodeURIComponent(deb.distribution)+'">bugs</a>] [<a href="http://patch-tracker.debian.org/package/'+encodeURIComponent(deb.package)+'/'+encodeURIComponent(deb.version)+'">patches</a>]<br/>'
 				+'Package version: '+deb.version+'<br/>'
 				+'Module version: '+deb.perl_version+'<br/>'
 				+'Arch: '+deb.arch+'<br/>'
