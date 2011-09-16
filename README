@@ -138,6 +138,9 @@ METHODS
   clean
     Remove all files from cache folder.
 
+SEE ALSO
+    http://pkg-perl.alioth.debian.org/cpan2deb/
+
 AUTHOR
     jozef@kutej.net, `<jkutej at cpan.org>'
 

@@ -72,11 +72,11 @@
    "provides" : {
       "Debian::Apt::PM" : {
          "file" : "lib/Debian/Apt/PM.pm",
-         "version" : "0.06"
+         "version" : "0.07"
       },
       "Debian::Apt::PM::SPc" : {
          "file" : "lib/Debian/Apt/PM/SPc.pm",
-         "version" : "0.06"
+         "version" : "0.07"
       }
    },
    "release_status" : "stable",
@@ -91,5 +91,5 @@
          "url" : "git://github.com/jozef/Debian-Apt-PM.git"
       }
    },
-   "version" : "0.06"
+   "version" : "0.07"
 }
