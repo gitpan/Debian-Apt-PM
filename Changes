@@ -1,5 +1,13 @@
 Revision history for Debian-Apt-PM
 
+0.09
+    * add --force-all option for apt-cpan
+    * sudo no more default
+    * throw an exception when the index is empty or missing
+    * add --version to all scripts
+    * apt-pm-web include data generation date-time
+    * fix dpkg-scanpmpackages to be less memory greedy
+
 0.08    21 Sep 2011
     * s/Debian::Dpkg::Version/Dpkg::Version/
     * Pod updates (thanks to Salve J. Nilsen)

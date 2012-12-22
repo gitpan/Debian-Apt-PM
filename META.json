@@ -4,7 +4,7 @@
       "Jozef Kutej <jkutej@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.112150",
+   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.112621",
    "keywords" : [
       "debian",
       "perl",
@@ -43,6 +43,8 @@
             "CPAN::Patches::Plugin::Debian" : "0.03",
             "CPAN::Version" : 0,
             "Carp" : 0,
+            "Data::Header::Fields" : "0.04",
+            "DateTime" : 0,
             "Digest::MD5" : 0,
             "Dpkg::Version" : 0,
             "File::Basename" : 0,
@@ -63,6 +65,7 @@
             "Module::Build::ModuleInfo" : 0,
             "Module::Depends::Intrusive" : 0,
             "Moose" : 0,
+            "Parallel::Iterator" : 0,
             "Parse::Deb::Control" : "0.04",
             "Pod::Usage" : 0,
             "Storable" : 0
@@ -72,7 +75,7 @@
    "provides" : {
       "Debian::Apt::PM" : {
          "file" : "lib/Debian/Apt/PM.pm",
-         "version" : "0.08"
+         "version" : "0.09"
       },
       "Debian::Apt::PM::SPc" : {
          "file" : "lib/Debian/Apt/PM/SPc.pm",
@@ -91,5 +94,5 @@
          "url" : "git://github.com/jozef/Debian-Apt-PM.git"
       }
    },
-   "version" : "0.08"
+   "version" : "0.09"
 }

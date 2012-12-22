@@ -3,7 +3,7 @@ package Debian::Apt::PM;
 use warnings;
 use strict;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 use 5.010;
 
@@ -36,14 +36,18 @@ has 'cachedir'        => (
 		.($_[0]->repo_type eq 'deb-src' ? '-src' : '' )
 	}
 );
-has 'repo_type'       => (is => 'rw', lazy => 1, default => 'deb');
+has 'repo_type'             => (is => 'rw', lazy => 1, default => 'deb');
+has 'packages_dependencies' => (is => 'rw', lazy => 1, default => sub { $_[0]->cachedir.'/../02packages.dependencies.txt' });
 has 'packages_dependencies_url'
-                      => (is => 'rw', lazy => 1, default => 'http://pkg-perl.alioth.debian.org/cpan2deb/CPAN/02packages.dependencies.txt.gz');
+                            => (is => 'rw', lazy => 1, default => 'http://pkg-perl.alioth.debian.org/cpan2deb/CPAN/02packages.dependencies.txt.gz');
 
 sub find {
 	my $self        = shift;
 	my $module      = shift;
 	my $min_version = shift;
+
+	die 'no modules in '.$self->repo_type." index. did you add/set apt sources.list?\n"
+		unless scalar keys %{$self->_modules_index()};
 	
 	my $versions_info = $self->_modules_index()->{$module};
 	return if not $versions_info;
@@ -100,7 +104,14 @@ sub update {
 	JSON::Util->encode($aptpm->_create_modules_index, [$index_filename])
 		if (not -f $index_filename) or File::is->older($index_filename, glob($self->cachedir.'/*.json')) or @existing;
 	
-	mirror($self->packages_dependencies_url, $self->_packages_dependencies_filename);
+	my $package_dependencies = $self->packages_dependencies;
+	if ($package_dependencies =~ m/\.gz$/) {
+		mirror($self->packages_dependencies_url, $package_dependencies);
+	}
+	else {
+		mirror($self->packages_dependencies_url, $package_dependencies.'.gz');
+		system('gzip', '-d', '-f', $package_dependencies.'.gz');
+	}
 }
 
 sub clean {
@@ -109,11 +120,97 @@ sub clean {
 	foreach my $filename (glob($self->cachedir.'/*')) {
 		unlink($filename) or warn 'failed to remove '.$filename."\n";
 	}
-	unlink($self->_packages_dependencies_filename);
+	unlink($self->packages_dependencies);
 }
 
-sub _packages_dependencies_filename {
-	return $_[0]->cachedir.'/../02packages.dependencies.txt.gz';
+sub resolve_install_depends {
+	my $self      = shift;
+	my $force_all = shift;
+	my @modules = @_;
+
+	my @depends = (
+		map { $_->[1] ||= 0; $_; }
+		map { [ split('/', $_) ] }
+		@modules
+	);
+	my @debs_to_install;
+	my @modules_to_install;
+	my %visited_modules;
+	while (@depends) {
+		my @new_depends;
+		foreach my $module (@depends) {
+			my $module_name    = $module->[0];
+			my $module_version = $module->[1];
+			my $deb_version    = $self->find($module_name, $module_version);
+			if (exists $deb_version->{'min'}) {
+				push @debs_to_install, $deb_version->{'min'}->{'package'};
+				next;
+			}
+			else {
+				push @modules_to_install, $module_name;
+			}
+			
+			my @module_depends =
+				grep { ref $_ ? 1 : ((push @debs_to_install, $_) and 0) }
+				$self->module_depends($module_name, $force_all, \%visited_modules)
+			;
+			
+			push @new_depends, @module_depends;
+		}
+		@depends = @new_depends;
+	}
+	
+	@debs_to_install    = reverse uniq @debs_to_install;
+	@modules_to_install = reverse uniq @modules_to_install;
+	
+	return (\@debs_to_install, \@modules_to_install);
+}
+
+sub module_depends {
+	my $self      = shift;
+	my $module    = shift;
+	my $force_all = shift // 1;
+	my $visited   = shift || {};
+	
+	my $packages_file = $self->packages_dependencies;
+	
+	my $packages_file_fh = (
+		$packages_file =~ m/\.gz$/
+		? (IO::Uncompress::Gunzip->new($packages_file) or die 'failed to open '.$packages_file)
+		: (IO::Any->read($packages_file) or die 'failed to open '.$packages_file)
+	);
+	while (my $line = <$packages_file_fh>) {
+		last if $line =~ m/^\s*$/;
+	}
+	while (my $line = <$packages_file_fh>) {
+		chomp $line;
+		if ($line =~ m{^ $module \s+ [^\s]+ \s+ (.+) $}xms) {
+			my $depends = $1;
+			return
+				if $depends eq 'undef';
+			return
+				uniq
+				map { my $deb = $self->find($_->[0], $_->[1]); ($deb->{'min'} ? $deb->{'min'}->{'package'} : $_); }
+				grep {
+					my $module = bless {"ID" => $_->[0]}, 'CPAN::Module';
+					my $inst_module_version = $module->inst_version;
+					(
+						defined $inst_module_version && (CPAN::Version->vcmp($inst_module_version, $_->[1]) >= 0)
+						? 0 || $force_all
+						: 1
+					)
+				}
+				map { $_->[1] ||= 0; $_; }
+				grep { $_->[0] ne 'perl' }
+				map { [ split('/', $_) ] }
+				map { $visited->{$_} = (); $_; }
+				grep { not exists $visited->{$_} }
+				split(/\s+/, $depends)
+			;
+		}
+	}
+	
+	return;
 }
 
 sub _etc_apt_sources {
@@ -204,6 +301,9 @@ sub _create_modules_index {
 	
 	my %modules_index;
 	foreach my $src (@sources) {
+		die $src." no such file. (run `apt-pm update` ?)\n"
+			unless -f $src;
+		
 		my @content_list;
 		given ($src) {
 			when (m/\.bz2$/) {
@@ -313,10 +413,10 @@ that can be reduced just to the wanted ones:
 
 	cat >> /etc/apt/sources.list << __END__
 	# for apt-pm
-	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     lenny   main contrib non-free
-	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     squeeze main contrib non-free
-	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     wheezy  main contrib non-free
-	deb http://pkg-perl.alioth.debian.org/~jozef-guest/pmindex/     sid     main contrib non-free
+	deb http://alioth.debian.org/~jozef-guest/pmindex/     lenny   main contrib non-free
+	deb http://alioth.debian.org/~jozef-guest/pmindex/     squeeze main contrib non-free
+	deb http://alioth.debian.org/~jozef-guest/pmindex/     wheezy  main contrib non-free
+	deb http://alioth.debian.org/~jozef-guest/pmindex/     sid     main contrib non-free
 
 	__END__
 
@@ -363,6 +463,10 @@ Default is F</var/cache/apt/apt-pm/deb/>.
 =item repo_type
 
 C<deb|deb-src>
+
+=item packages_dependencies
+
+Path to C<02packages.dependencies.txt(.gz)?> file.
 
 =back
 
@@ -427,6 +531,19 @@ to be used by C<apt-cpan>.
 =head2 clean
 
 Remove all files from cache folder.
+
+=head2 resolve_install_depends($force_all, @modules)
+
+Returns two array references one with Debian packages, the other with CPAN
+packages that needs to be installed on current system for the given list
+of C<@modules>.
+
+Option C<$force_all> (true/false) choose to include all dependencies not
+just the ones that needs to be installed.
+
+=head2 module_depends($module)
+
+Return all Perl modules and Debian packages C<$module> has as dependency.
 
 =head1 SEE ALSO
 

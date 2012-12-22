@@ -3,6 +3,8 @@
 use strict;
 use warnings;
 
+our $VERSION = '0.08';
+
 use Getopt::Long;
 use Pod::Usage;
 use Debian::Apt::PM;
@@ -18,56 +20,35 @@ exit main();
 
 sub main {
 	my $help;
-	my $packages_file = $apm->_packages_dependencies_filename;
+	my $packages_file = $apm->packages_dependencies;
 	my $simulate;
+	my $force_all = 0;
+	my $use_sudo;
+	my $print_version;
 	GetOptions(
 		'help|h'            => \$help,
 		'packages-file|p=s' => \$packages_file,
 		'dummy|n'           => \$simulate,
+		'force-all|a'       => \$force_all,
+		'sudo|s'            => \$use_sudo,
+		'version|V'         => \$print_version,
 	) or pod2usage;
 	pod2usage if $help;
+	print_version() if $print_version;
 	pod2usage
 		unless shift @ARGV eq 'install';
 	
 	die 'no such file '.$packages_file.' (`apt-pm update`?)'
 		unless -r $packages_file;
+	$apm->packages_dependencies($packages_file);
 
-	my @depends = (
-		map { $_->[1] ||= 0; $_; }
-		map { [ split('/', $_) ] }
-		@ARGV
-	);
-	my @debs_to_install;
-	my @modules_to_install;
-	while (@depends) {
-		my @new_depends;
-		foreach my $module (@depends) {
-			my $module_name    = $module->[0];
-			my $module_version = $module->[1];
-			my $deb_version    = $apm->find($module_name, $module_version);
-			if (exists $deb_version->{'min'}) {
-				push @debs_to_install, $deb_version->{'min'}->{'package'};
-				next;
-			}
-			else {
-				push @modules_to_install, $module_name;
-			}
-			
-			my @module_depends =
-				grep { ref $_ ? 1 : ((push @debs_to_install, $_) and 0) }
-				find_depends($packages_file, $module_name)
-			;
-			
-			push @new_depends, @module_depends;
-		}
-		@depends = @new_depends;
-	}
+	my ($debs_to_install, $modules_to_install) = $apm->resolve_install_depends($force_all, @ARGV);
 	
 	my @cmds;
-	push @cmds, [ 'sudo', 'apt-get', 'install', join(" ", @debs_to_install) ]
-		if @debs_to_install;
-	push @cmds, [ 'sudo', 'cpan', '-i', join(" ", @modules_to_install) ]
-		if @modules_to_install;
+	push @cmds, [ ($use_sudo ? 'sudo' : ()), 'apt-get', 'install',  @$debs_to_install ]
+		if @$debs_to_install;
+	push @cmds, [ ($use_sudo ? 'sudo' : ()), 'cpan', '-i', @$modules_to_install ]
+		if @$modules_to_install;
 	
 	foreach my $cmd (@cmds) {
 		print join(" ",@{$cmd}), "\n";
@@ -78,42 +59,9 @@ sub main {
 	return 0;
 }
 
-sub find_depends {
-	my $packages_file = shift;
-	my $module        = shift;
-	
-	my $packages_file_fh = IO::Uncompress::Gunzip->new($packages_file) or die 'failed to open '.$packages_file;
-	while (my $line = <$packages_file_fh>) {
-		last if $line =~ m/^\s*$/;
-	}
-	while (my $line = <$packages_file_fh>) {
-		chomp $line;
-		if ($line =~ m{^ $module \s+ [^\s]+ \s+ (.+) $}xms) {
-			my $depends = $1;
-			return
-				if $depends eq 'undef';
-			return
-				uniq
-				sort
-				map { my $deb = $apm->find($_->[0], $_->[1]); ($deb->{'min'} ? $deb->{'min'}->{'package'} : $_); }
-				grep {
-					my $module = bless {"ID" => $_->[0]}, 'CPAN::Module';
-					my $inst_module_version = $module->inst_version;
-					(
-						defined $inst_module_version && (CPAN::Version->vcmp($inst_module_version, $_->[1]) >= 0)
-						? 0
-						: 1
-					)
-				}
-				map { $_->[1] ||= 0; $_; }
-				grep { $_->[0] ne 'perl' }
-				map { [ split('/', $_) ] }
-				split(/\s+/, $depends)
-			;
-		}
-	}
-	
-	return;
+sub print_version {
+	print "$0 $VERSION, Debian::Apt::PM $Debian::Apt::PM::VERSION\n";
+	exit 0;
 }
 
 __END__
@@ -128,6 +76,7 @@ apt-cpan - installs CPAN modules from Debian repository if possible
 	
 		--dummy|n         dummy run, just display what is going to be done
 		--packages-file|p path to 02packages.dependencies.txt.gz
+		--force-all|a     print out all Debian packages and Perl modules needed
 
 =head1 DESCRIPTION
 

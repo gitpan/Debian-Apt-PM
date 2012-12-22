@@ -53,6 +53,9 @@ my $builder = Module::Build::SysPath->new(
         'IO::Uncompress::Gunzip'  => 0,
         'CPAN'                    => 0,
         'CPAN::Module'            => 0,
+        'DateTime'                => 0,
+        'Data::Header::Fields'    => '0.04',       # fix mem leaks
+        'Parallel::Iterator'      => 0,
     },
     script_files => [
         'script/apt-pm',
